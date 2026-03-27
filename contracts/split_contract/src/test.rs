@@ -1,5 +1,6 @@
 #![cfg(test)]
-use super::{CustomTokenContract, CustomTokenContractClient, SplitContract, SplitContractClient};
+use super::{SplitContract, SplitContractClient};
+use token_contract::{CustomTokenContract, CustomTokenContractClient};
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 #[test]
