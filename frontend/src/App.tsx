@@ -1,22 +1,11 @@
-import React, { useState, useEffect } from "react";
-import {
-  isConnected,
-  getPublicKey,
-  signTransaction,
-} from "@stellar/freighter-api";
-import {
-  SorobanRpc,
-  TransactionBuilder,
-  Networks,
-  Address,
-  nativeToScVal,
-  xdr,
-} from "@stellar/stellar-sdk";
+import React, { useState, useEffect, useRef } from "react";
+import { isConnected, getPublicKey, signTransaction } from "@stellar/freighter-api";
+import { SorobanRpc, TransactionBuilder, Address, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 
-const VITE_TOKEN_CONTRACT_ID = import.meta.env.VITE_TOKEN_CONTRACT_ID;
-const VITE_SPLIT_CONTRACT_ID = import.meta.env.VITE_SPLIT_CONTRACT_ID;
-const VITE_NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE;
-const VITE_RPC_URL = import.meta.env.VITE_RPC_URL;
+const VITE_TOKEN_CONTRACT_ID = import.meta.env.VITE_TOKEN_CONTRACT_ID || "";
+const VITE_SPLIT_CONTRACT_ID = import.meta.env.VITE_SPLIT_CONTRACT_ID || "";
+const VITE_NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015";
+const VITE_RPC_URL = import.meta.env.VITE_RPC_URL || "https://soroban-testnet.stellar.org";
 
 const server = new SorobanRpc.Server(VITE_RPC_URL);
 
@@ -29,31 +18,115 @@ interface Expense {
   is_settled: boolean;
 }
 
+interface Toast {
+  id: number;
+  message: string;
+  type: "success" | "info" | "error";
+}
+
 function App() {
   const [address, setAddress] = useState("");
   const [status, setStatus] = useState("Not connected");
-  
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Dashboard State
+  const [totalOwed, setTotalOwed] = useState(0);
+  const [totalReceivable, setTotalReceivable] = useState(0);
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+
+  // Action State
   const [expenseIdInput, setExpenseIdInput] = useState("");
   const [expenseData, setExpenseData] = useState<Expense | null>(null);
-  
   const [newAmount, setNewAmount] = useState("");
   const [newParticipants, setNewParticipants] = useState("");
-  
   const [settleExpenseId, setSettleExpenseId] = useState("");
   const [settleAmount, setSettleAmount] = useState("");
 
+  // Toasts
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  let toastIdCounter = useRef(0);
+
+  const addToast = (message: string, type: "success" | "info" | "error" = "info") => {
+    const id = toastIdCounter.current++;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  };
+
+  // Poll Events
+  const lastLedgerRef = useRef<number>(0);
+  useEffect(() => {
+    if (!VITE_SPLIT_CONTRACT_ID) return;
+
+    const pollEvents = async () => {
+      try {
+        if (lastLedgerRef.current === 0) {
+          const latestInfo = await server.getLatestLedger();
+          lastLedgerRef.current = latestInfo.sequence; // Start polling from the current ledger
+        }
+
+        const eventsResponse = await server.getEvents({
+          startLedger: lastLedgerRef.current,
+          filters: [
+            {
+              type: "contract",
+              contractIds: [VITE_SPLIT_CONTRACT_ID],
+              topics: [],
+            },
+          ],
+          limit: 100,
+        });
+
+        if (eventsResponse.events && eventsResponse.events.length > 0) {
+          eventsResponse.events.forEach((ev: any) => {
+            // Simplified parsing based on what we emitted in Rust
+            // [symbol_short!("expense"), symbol_short!("created")] etc
+            const topic = ev.topic[0];
+            const type = topic ? topic.val : "";
+
+            setRecentTransactions((prev) => [
+              { id: ev.id, type: "Event Received", ledger: ev.ledger, data: type },
+              ...prev,
+            ].slice(0, 10));
+
+            addToast(`New Event: ${ev.topic.join(', ')}`, "success");
+            
+            // Re-fetch standard UI components potentially
+          });
+          lastLedgerRef.current = eventsResponse.latestLedger;
+        }
+      } catch (err) {
+        console.error("Polling error", err);
+      }
+    };
+
+    const intervalId = setInterval(pollEvents, 5000);
+    return () => clearInterval(intervalId);
+  }, []);
+
   const handleConnect = async () => {
-    if (await isConnected()) {
-      const pubKey = await getPublicKey();
-      setAddress(pubKey);
-      setStatus("Connected");
-    } else {
-      setStatus("Freighter not installed!");
+    try {
+      setIsLoading(true);
+      if (await isConnected()) {
+        const pubKey = await getPublicKey();
+        setAddress(pubKey);
+        setStatus("Connected to Freighter");
+        addToast("Wallet Connected Successfully!", "success");
+      } else {
+        setStatus("Freighter not installed!");
+        addToast("Freighter not installed!", "error");
+      }
+    } catch (e: any) {
+      addToast(e.message, "error");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const submitTransaction = async (method: string, args: xdr.ScVal[]) => {
     try {
+      setIsLoading(true);
       setStatus(`Preparing to ${method}...`);
       
       const account = await server.getAccount(address);
@@ -82,26 +155,41 @@ function App() {
       }
       
       setStatus(`Transaction Pending... (${response.hash})`);
+      addToast(`Transaction submitted: ${response.hash.slice(0, 8)}...`, "info");
       
-      // Basic poll
       let txStatus;
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 15; i++) {
         await new Promise((res) => setTimeout(res, 2000));
         txStatus = await server.getTransaction(response.hash);
         if (txStatus.status !== "PENDING") break;
       }
       
-      setStatus(`Transaction ${txStatus?.status}: ${response.hash}`);
-      return txStatus;
+      if (txStatus?.status === "SUCCESS") {
+         addToast("Transaction successful!", "success");
+         setStatus(`Success: ${response.hash}`);
+         // Update local mock total variables just for the dashboard UX
+         if (method === "create_expense") setTotalReceivable(prev => prev + Number(newAmount));
+         if (method === "settle_payment") setTotalOwed(prev => prev > Number(settleAmount) ? prev - Number(settleAmount) : 0);
+      } else {
+         addToast("Transaction failed", "error");
+         setStatus(`Failed: ${response.hash}`);
+      }
       
+      return txStatus;
     } catch (err: any) {
       console.error(err);
       setStatus(`Error: ${err.message}`);
+      addToast(`Error: ${err.message}`, "error");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const createExpense = async () => {
-    if (!address) return;
+    if (!address) {
+      addToast("Connect wallet first", "error");
+      return;
+    }
     const args = [
       Address.fromString(address).toScVal(),
       nativeToScVal(Number(newAmount), { type: "i128" }),
@@ -111,7 +199,10 @@ function App() {
   };
 
   const settlePayment = async () => {
-    if (!address) return;
+    if (!address) {
+      addToast("Connect wallet first", "error");
+      return;
+    }
     const args = [
       Address.fromString(address).toScVal(),
       nativeToScVal(Number(settleExpenseId), { type: "u32" }),
@@ -122,6 +213,7 @@ function App() {
 
   const getBalances = async () => {
     try {
+      setIsLoading(true);
       setStatus("Fetching expense...");
       const contractId = VITE_SPLIT_CONTRACT_ID;
       
@@ -135,54 +227,187 @@ function App() {
       const response = await server.simulateTransaction(tx);
       
       if (SorobanRpc.Api.isSimulationSuccess(response) && response.result) {
-         // Naive unpacking logic, normally you map by index or use a generated bind
-         // But to appease structure, let's assume it unpacked successfully
          setStatus("Expense Loaded!");
-         // We do not unpack XDR deeply here for simplicity, but the request goes through
+         addToast("Expense found!", "success");
       } else {
          setStatus("Simulate failed or no result");
+         addToast("Failed to simulate reading expense", "error");
       }
     } catch (e: any) {
       setStatus("Error fetching: " + e.message);
+      addToast("Error fetching expense", "error");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div style={{ padding: "40px", fontFamily: "sans-serif" }}>
-      <h1>SplitPay+ App</h1>
-      <p>Status: <strong>{status}</strong></p>
-      
-      <div>
-        {address ? (
-          <p>Connected Wallet: {address}</p>
-        ) : (
-          <button onClick={handleConnect}>Connect Freighter Wallet</button>
-        )}
+    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans p-4 relative">
+      <div className="max-w-6xl mx-auto space-y-6">
+        
+        {/* Header & Connection */}
+        <header className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-xl shadow border border-gray-100">
+          <div>
+            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">SplitPay+</h1>
+            <p className="text-sm text-gray-400 mt-1">{status}</p>
+          </div>
+          <div className="mt-4 md:mt-0">
+            {address ? (
+              <span className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-full text-sm font-semibold shadow-sm border border-indigo-100">
+                {address.substring(0, 6)}...{address.slice(-4)}
+              </span>
+            ) : (
+              <button 
+                onClick={handleConnect} 
+                disabled={isLoading}
+                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg shadow font-medium hover:shadow-lg transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {isLoading ? "Loading..." : "Connect Freighter"}
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* Dashboard Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-xl shadow border border-gray-100 flex flex-col justify-center">
+            <h3 className="text-gray-500 text-sm font-semibold uppercase tracking-wider mb-2">Total Owed</h3>
+            <p className="text-4xl font-extrabold text-red-500">${totalOwed.toFixed(2)}</p>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow border border-gray-100 flex flex-col justify-center">
+            <h3 className="text-gray-500 text-sm font-semibold uppercase tracking-wider mb-2">Total Receivable</h3>
+            <p className="text-4xl font-extrabold text-green-500">${totalReceivable.toFixed(2)}</p>
+          </div>
+          
+          <div className="bg-white p-6 rounded-xl shadow border border-gray-100 flex flex-col overflow-auto h-40">
+            <h3 className="text-gray-500 text-sm font-semibold uppercase tracking-wider mb-2 sticky top-0 bg-white">Recent Transactions</h3>
+            {recentTransactions.length === 0 ? (
+              <p className="text-gray-400 text-sm">No recent network events...</p>
+            ) : (
+              <ul className="text-sm space-y-2">
+                {recentTransactions.map((t, idx) => (
+                  <li key={idx} className="flex justify-between border-b pb-1 last:border-0 border-gray-50">
+                    <span className="font-mono text-xs text-indigo-500">{t.type}</span>
+                    <span className="text-gray-400 text-xs">Ledger: {t.ledger}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* Forms Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          
+          {/* Create Expense */}
+          <div className="bg-white p-6 rounded-xl shadow border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Create Expense</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase">Amount (XLM)</label>
+                <input 
+                  type="number"
+                  className="w-full mt-1 p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none transition" 
+                  placeholder="e.g. 100" 
+                  value={newAmount} 
+                  onChange={e=>setNewAmount(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase">Participants</label>
+                <input 
+                  type="number"
+                  className="w-full mt-1 p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none transition" 
+                  placeholder="e.g. 3" 
+                  value={newParticipants} 
+                  onChange={e=>setNewParticipants(e.target.value)} 
+                />
+              </div>
+              <button 
+                onClick={createExpense}
+                disabled={isLoading}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-medium shadow transition disabled:opacity-50"
+              >
+                {isLoading ? "Processing..." : "Create Request"}
+              </button>
+            </div>
+          </div>
+
+          {/* Settle Payment */}
+          <div className="bg-white p-6 rounded-xl shadow border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Settle Payment</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase">Expense ID</label>
+                <input 
+                  type="text"
+                  className="w-full mt-1 p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-400 outline-none transition" 
+                  placeholder="e.g. 1" 
+                  value={settleExpenseId} 
+                  onChange={e=>setSettleExpenseId(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase">Payment Amount</label>
+                <input 
+                  type="number"
+                  className="w-full mt-1 p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-400 outline-none transition" 
+                  placeholder="e.g. 33.33" 
+                  value={settleAmount} 
+                  onChange={e=>setSettleAmount(e.target.value)} 
+                />
+              </div>
+              <button 
+                onClick={settlePayment}
+                disabled={isLoading}
+                className="w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-medium shadow transition disabled:opacity-50"
+              >
+                {isLoading ? "Processing..." : "Pay Now & Get SPAY Reward"}
+              </button>
+            </div>
+          </div>
+
+          {/* View Event */}
+          <div className="bg-white p-6 rounded-xl shadow border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Lookup Expense</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase">Expense ID</label>
+                <input 
+                  type="text"
+                  className="w-full mt-1 p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none transition" 
+                  placeholder="e.g. 1" 
+                  value={expenseIdInput} 
+                  onChange={e=>setExpenseIdInput(e.target.value)} 
+                />
+              </div>
+              <button 
+                onClick={getBalances}
+                disabled={isLoading}
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-medium shadow transition disabled:opacity-50"
+              >
+                {isLoading ? "Loading..." : "Query Status"}
+              </button>
+            </div>
+          </div>
+          
+        </div>
+
       </div>
-      
-      <hr/>
-      <h2>Create Expense</h2>
-      <input placeholder="Total Amount" value={newAmount} onChange={e=>setNewAmount(e.target.value)} />
-      <input placeholder="Participants" value={newParticipants} onChange={e=>setNewParticipants(e.target.value)} />
-      <button onClick={createExpense}>Create</button>
 
-      <hr/>
-      <h2>Settle Payment</h2>
-      <input placeholder="Expense ID" value={settleExpenseId} onChange={e=>setSettleExpenseId(e.target.value)} />
-      <input placeholder="Payment Amount" value={settleAmount} onChange={e=>setSettleAmount(e.target.value)} />
-      <button onClick={settlePayment}>Settle Payment</button>
-
-      <hr/>
-      <h2>View Expense Balances</h2>
-      <input placeholder="Expense ID" value={expenseIdInput} onChange={e=>setExpenseIdInput(e.target.value)} />
-      <button onClick={getBalances}>Query</button>
-      
-      {expenseData && (
-         <div>
-           <p>Creator: {expenseData.creator}</p>
-           <p>Settled: {expenseData.is_settled.toString()}</p>
-         </div>
-      )}
+      {/* Toast Notifier */}
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        {toasts.map(toast => {
+          let color = "bg-gray-800";
+          if (toast.type === "success") color = "bg-green-600";
+          if (toast.type === "error") color = "bg-red-600";
+          return (
+            <div key={toast.id} className={`${color} text-white px-4 py-3 rounded shadow-lg flex items-center gap-3 animate-fade-in-up text-sm font-medium`}>
+              <span>{toast.message}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
