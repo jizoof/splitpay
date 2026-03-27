@@ -1,5 +1,8 @@
 # SplitPay+ Monorepo
 
+[![CI](https://github.com/jizoof/splitpay/actions/workflows/ci.yml/badge.svg)](https://github.com/jizoof/splitpay/actions/workflows/ci.yml)
+[![CD](https://github.com/jizoof/splitpay/actions/workflows/cd.yml/badge.svg)](https://github.com/jizoof/splitpay/actions/workflows/cd.yml)
+
 Welcome to the **SplitPay+** monorepo! This is a Stellar Soroban dApp containing a Rust smart contract, a Node.js Express backend, and a React + Vite + Tailwind frontend.
 
 ## Prerequisites
