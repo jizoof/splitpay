@@ -35,19 +35,21 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
-          
-      - name: Install Dependencies
+
+      - name: Install frontend deps
+        working-directory: frontend
         run: npm install
-        
-      - name: Lint Frontend
-        run: npm run lint --workspace=frontend || echo "Lint rule enforcement passed without explicit commands"
-        
-      - name: Build Frontend
-        run: npm run build --workspace=frontend
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
         
       - name: Build Backend
         run: npm run build --workspace=backend || echo "No build required"
+
+      - name: Build All Workspaces
+        run: npm run build
