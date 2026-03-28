@@ -6,14 +6,23 @@ on:
 
 jobs:
   deploy-contracts:
-    name: Deploy Soroban Contracts
-    runs-on: ubuntu-latest
-    env:
-      SOROBAN_RPC_URL: ${{ secrets.SOROBAN_RPC_URL }}
-      SOROBAN_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
-      SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_SECRET_KEY }}
+  name: Build Soroban Contracts
+  runs-on: ubuntu-latest
 
-    steps:
+  steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+
+    - name: Build contracts
+      working-directory: contracts
+      run: cargo build --release --target wasm32-unknown-unknown
+
+    - steps:
       - name: Checkout repo
         uses: actions/checkout@v3
 
