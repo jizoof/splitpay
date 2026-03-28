@@ -12,22 +12,25 @@ jobs:
       SOROBAN_RPC_URL: ${{ secrets.SOROBAN_RPC_URL }}
       SOROBAN_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
       SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_SECRET_KEY }}
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Build Contracts
+      - name: Build contracts
         working-directory: contracts
-        run: cargo build --target wasm32-unknown-unknown --release
+        run: cargo build --release --target wasm32-unknown-unknown
 
       - name: Install Soroban CLI
         run: |
-          curl -L https://github.com/stellar/soroban-cli/releases/latest/download/soroban-cli-x86_64-unknown-linux-gnu.tar.gz -o soroban.tar.gz
+          curl -L https://github.com/stellar/soroban-cli/releases/download/v25.2.0/soroban-cli-x86_64-unknown-linux-gnu.tar.gz -o soroban.tar.gz
           tar -xzf soroban.tar.gz
+          chmod +x soroban
           sudo mv soroban /usr/local/bin/
 
       - name: Deploy Token Contract
@@ -50,8 +53,10 @@ jobs:
     name: Deploy Frontend
     runs-on: ubuntu-latest
     needs: [deploy-contracts]
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
       - name: Install Node
         uses: actions/setup-node@v3
