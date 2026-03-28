@@ -28,11 +28,7 @@ jobs:
 
       - name: Install Soroban CLI
         run: |
-          curl -L https://github.com/stellar/soroban-cli/releases/download/v25.2.0/soroban-cli-x86_64-unknown-linux-gnu.tar.gz -o soroban.tar.gz
-          tar -xzf soroban.tar.gz
-          chmod +x soroban
-          sudo mv soroban /usr/local/bin/
-
+          cargo install --locked soroban-cli
       - name: Deploy Token Contract
         run: |
           soroban contract deploy \
