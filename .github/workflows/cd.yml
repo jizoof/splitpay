@@ -28,14 +28,10 @@ jobs:
 
       - name: Install Soroban CLI
         run: |
-          cargo install --locked soroban-cli
-      - name: Deploy Token Contract
-        run: |
-          soroban contract deploy \
-            --wasm contracts/target/wasm32-unknown-unknown/release/token_contract.wasm \
-            --source $SOROBAN_SECRET_KEY \
-            --rpc-url $SOROBAN_RPC_URL \
-            --network-passphrase "$SOROBAN_NETWORK_PASSPHRASE"
+          sudo apt-get update
+          sudo apt-get install -y curl
+          curl -L https://github.com/stellar/soroban-cli/releases/download/v25.2.0/soroban-cli-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+          sudo mv soroban /usr/local/bin/
 
       - name: Deploy Split Contract
         run: |
