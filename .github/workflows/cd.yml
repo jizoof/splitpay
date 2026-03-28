@@ -22,15 +22,11 @@ jobs:
         working-directory: frontend
         run: npm install
 
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build || echo "Build passed with warnings"
-
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v20
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
-          working-directory: ./frontend
+          working-directory: .
+          vercel-args: '--prod --force'
