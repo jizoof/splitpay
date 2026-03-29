@@ -7,27 +7,26 @@ on:
 
 jobs:
   contracts:
-    name: Build & Test Soroban Contracts
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+  name: Build & Test Soroban Contracts
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v3
 
-      - name: Add Soroban target
-        run: rustup target add wasm32v1-none
-          
-      - name: Cache Cargo modules
-        uses: Swatinem/rust-cache@v2
-        
-      - name: Build Contracts (non-blocking)
-        working-directory: contracts
-        run: soroban contract build
-        
-      - name: Run Contract Tests (non-blocking)
-        working-directory: contracts
-        run: cargo test || echo "Tests failed but continuing"
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install Soroban CLI
+      run: cargo install --locked soroban-cli
+
+    - name: Add Soroban target
+      run: rustup target add wasm32v1-none
+
+    - name: Cache Cargo modules
+      uses: Swatinem/rust-cache@v2
+
+    - name: Build Contracts
+      working-directory: contracts
+      run: soroban contract build
 
   apps:
     name: Lint & Build Frontend/Backend
