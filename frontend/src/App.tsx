@@ -106,23 +106,26 @@ function App() {
   }, []);
 
   const handleConnect = async () => {
-    try {
-      setIsLoading(true);
-      if (await isConnected()) {
-        const pubKey = await getPublicKey();
-        setAddress(pubKey);
-        setStatus("Connected to Freighter");
-        addToast("Wallet Connected Successfully!", "success");
-      } else {
-        setStatus("Freighter not installed!");
-        addToast("Freighter not installed!", "error");
-      }
-    } catch (e: any) {
-      addToast(e.message, "error");
-    } finally {
-      setIsLoading(false);
+  try {
+    setIsLoading(true);
+
+    const pubKey = await getPublicKey(); // THIS is the real connection
+
+    if (!pubKey) {
+      throw new Error("Failed to get public key");
     }
-  };
+
+    setAddress(pubKey);
+    setStatus("Connected to Freighter");
+    addToast("Wallet Connected Successfully!", "success");
+
+  } catch (e: any) {
+    setStatus("Connection failed");
+    addToast(e.message || "Connection error", "error");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const submitTransaction = async (method: string, args: xdr.ScVal[]) => {
     try {
