@@ -52,49 +52,71 @@ function App() {
     }
   };
 
-  const submitTransaction = async (method: string, args: xdr.ScVal[]) => {
-    try {
-      setIsLoading(true);
+const submitTransaction = async (method: string, args: xdr.ScVal[]) => {
+  try {
+    setIsLoading(true);
 
-      const account = await server.getAccount(address);
+    console.log("Submitting with address:", address);
 
-      const tx = new TransactionBuilder(account, {
-        fee: "100",
-        networkPassphrase: VITE_NETWORK_PASSPHRASE
-      })
-        .addOperation(
-          SorobanRpc.invokeContractOperation(
-            VITE_SPLIT_CONTRACT_ID,
-            method,
-            args
-          )
-        )
-        .setTimeout(30)
-        .build();
-
-      const prepared = await server.prepareTransaction(tx);
-
-      const signed = await signTransaction(prepared.toXDR(), {
-        networkPassphrase: VITE_NETWORK_PASSPHRASE
-      });
-
-      const signedTx = TransactionBuilder.fromXDR(
-        signed,
-        VITE_NETWORK_PASSPHRASE
-      );
-
-      const res = await server.sendTransaction(signedTx);
-
-      addToast("Transaction sent", "success");
-
-      return res;
-
-    } catch (e: any) {
-      addToast(e.message, "error");
-    } finally {
-      setIsLoading(false);
+    if (!address) {
+      throw new Error("Wallet not connected (address empty)");
     }
-  };
+
+    const account = await server.getAccount(address);
+    console.log("Account loaded:", account);
+
+    const tx = new TransactionBuilder(account, {
+      fee: "100",
+      networkPassphrase: VITE_NETWORK_PASSPHRASE
+    })
+      .addOperation(
+        SorobanRpc.invokeContractOperation(
+          VITE_SPLIT_CONTRACT_ID,
+          method,
+          args
+        )
+      )
+      .setTimeout(30)
+      .build();
+
+    console.log("TX built");
+
+    const prepared = await server.prepareTransaction(tx);
+    console.log("TX prepared");
+
+    const signed = await signTransaction(prepared.toXDR(), {
+      networkPassphrase: VITE_NETWORK_PASSPHRASE
+    });
+
+    console.log("TX signed:", signed);
+
+    const signedTx = TransactionBuilder.fromXDR(
+      signed,
+      VITE_NETWORK_PASSPHRASE
+    );
+
+    const res = await server.sendTransaction(signedTx);
+
+    console.log("TX response:", res);
+
+    addToast("Transaction sent", "success");
+
+    return res;
+
+  } catch (err: any) {
+    console.error("FULL ERROR:", err);
+
+    setStatus(`Error: ${err.message}`);
+
+    addToast(
+      err?.message || "Transaction failed (check console)",
+      "error"
+    );
+
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // 🔥 FIXED CREATE
   const createExpense = async () => {
