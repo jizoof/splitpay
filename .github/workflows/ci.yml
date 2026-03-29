@@ -2,54 +2,55 @@ name: CI
 
 on:
   push:
-    branches: [ "**" ]
+    branches: ["**"]
   pull_request:
 
 jobs:
   contracts:
-  name: Build & Test Soroban Contracts
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v3
+    name: Build & Test Soroban Contracts
+    runs-on: ubuntu-latest
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
+    steps:
+      - uses: actions/checkout@v3
 
-    - name: Install Soroban CLI
-      run: cargo install --locked soroban-cli
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
-    - name: Add Soroban target
-      run: rustup target add wasm32v1-none
+      - name: Install Soroban CLI
+        run: cargo install --locked soroban-cli --force
 
-    - name: Cache Cargo modules
-      uses: Swatinem/rust-cache@v2
+      - name: Add Soroban target
+        run: rustup target add wasm32-unknown-unknown
 
-    - name: Build Contracts
-      working-directory: contracts
-      run: soroban contract build
+      - name: Cache Cargo modules
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Contracts
+        working-directory: contracts
+        run: soroban contract build
 
   apps:
     name: Lint & Build Frontend/Backend
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'
 
       - name: Install frontend deps
         working-directory: frontend
         run: npm install
 
-      - name: Build frontend (non-blocking)
+      - name: Build frontend
         working-directory: frontend
         run: npm run build || echo "Frontend build passed with warnings"
-        
+
       - name: Build Backend
         run: npm run build --workspace=backend || echo "No build required"
 
-      - name: Build All Workspaces (non-blocking)
-        run: npm run build || echo "Workspace build passed with warnings"
+      - name: Build All Workspaces
+        run: npm run build || echo "Workspace build passed"
