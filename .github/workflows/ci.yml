@@ -14,15 +14,16 @@ jobs:
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+
+      - name: Add Soroban target
+        run: rustup target add wasm32v1-none
           
       - name: Cache Cargo modules
         uses: Swatinem/rust-cache@v2
         
       - name: Build Contracts (non-blocking)
         working-directory: contracts
-        run: cargo build --target wasm32-unknown-unknown --release || echo "Build failed but continuing"
+        run: soroban contract build
         
       - name: Run Contract Tests (non-blocking)
         working-directory: contracts
