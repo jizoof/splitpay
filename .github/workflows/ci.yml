@@ -41,8 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: contract-wasm
-          path: contracts/target/wasm32v1-none/release/*.wasm
-
+          path: contracts/target/**/*.wasm
   apps:
     name: Lint & Build Frontend/Backend
     runs-on: ubuntu-latest
