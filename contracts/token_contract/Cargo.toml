@@ -7,6 +7,9 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[package.metadata.soroban]
+target = "wasm32-unknown-unknown"
+
 [dependencies]
 soroban-sdk = "20.0.0"
 
